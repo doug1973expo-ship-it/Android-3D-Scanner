@@ -14,9 +14,13 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
-      - run: gradle assembleDebug --stacktrace
+      - name: Create date-compatible signing certificate
+        run: |
+          keytool -genkeypair -keystore scanner-release.p12 -storetype PKCS12 -storepass Pocket3DScanner -keypass Pocket3DScanner -alias scanner -keyalg RSA -keysize 2048 -validity 20000 -startdate "2000/01/01 00:00:00" -dname "CN=Pocket 3D Scanner, O=Pocket 3D Scanner, C=GB"
+      - run: gradle assembleRelease --stacktrace
       - name: Publish directly downloadable APK
         env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
-          gh release create latest app/build/outputs/apk/debug/app-debug.apk --title "Latest Pocket 3D Scanner APK" --notes "Automatic development build. Download app-debug.apk below."
+          cp app/build/outputs/apk/release/app-release.apk Pocket-3D-Scanner.apk
+          gh release create latest Pocket-3D-Scanner.apk --title "Latest Pocket 3D Scanner APK" --notes "Date-compatible Android build. Download Pocket-3D-Scanner.apk below."
