@@ -17,6 +17,16 @@ class VoxelGrid(private val voxel: Float = 0.006f) {
             cells.add(Cell(floor(x/voxel).toInt(), floor(y/voxel).toInt(), floor(z/voxel).toInt()))
     }
     fun clear() = cells.clear()
+    fun snapshotPoints(maxPoints:Int=60000):FloatArray {
+        val snapshot=cells.toList()
+        val stride=if(snapshot.size>maxPoints) (snapshot.size/maxPoints)+1 else 1
+        val chosen=snapshot.filterIndexed{i,_->i%stride==0}
+        return FloatArray(chosen.size*3).also{out->chosen.forEachIndexed{i,c->
+            out[i*3]=(c.x+0.5f)*voxel
+            out[i*3+1]=(c.y+0.5f)*voxel
+            out[i*3+2]=(c.z+0.5f)*voxel
+        }}
+    }
     fun exportStl(file: File) {
         val set=cells.toHashSet()
         val dirs=arrayOf(intArrayOf(1,0,0),intArrayOf(-1,0,0),intArrayOf(0,1,0),intArrayOf(0,-1,0),intArrayOf(0,0,1),intArrayOf(0,0,-1))
