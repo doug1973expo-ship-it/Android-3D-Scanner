@@ -11,6 +11,8 @@ import java.nio.FloatBuffer
 class CameraBackground {
     var textureId=-1; private var program=0
     private val quad=floatArrayOf(-1f,-1f,1f,-1f,-1f,1f,1f,1f)
+    private val quadBuffer by lazy { buf(quad) }
+    private val textureBuffer:FloatBuffer=ByteBuffer.allocateDirect(8*4).order(ByteOrder.nativeOrder()).asFloatBuffer()
     private fun buf(a:FloatArray):FloatBuffer=ByteBuffer.allocateDirect(a.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(a);position(0)}
     fun create(){
         val id=IntArray(1); GLES20.glGenTextures(1,id,0); textureId=id[0]
@@ -23,12 +25,13 @@ class CameraBackground {
             "#extension GL_OES_EGL_image_external : require\nprecision mediump float;varying vec2 v;uniform samplerExternalOES s;void main(){gl_FragColor=texture2D(s,v);}")
     }
     fun draw(frame:Frame){
-        val tex=FloatArray(8)
-        frame.transformCoordinates2d(Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,buf(quad),Coordinates2d.TEXTURE_NORMALIZED,buf(tex))
+        quadBuffer.position(0);textureBuffer.position(0)
+        frame.transformCoordinates2d(Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,quadBuffer,Coordinates2d.TEXTURE_NORMALIZED,textureBuffer)
+        quadBuffer.position(0);textureBuffer.position(0)
         GLES20.glDisable(GLES20.GL_DEPTH_TEST); GLES20.glUseProgram(program)
         val p=GLES20.glGetAttribLocation(program,"p"); val t=GLES20.glGetAttribLocation(program,"t")
-        GLES20.glVertexAttribPointer(p,2,GLES20.GL_FLOAT,false,0,buf(quad)); GLES20.glEnableVertexAttribArray(p)
-        GLES20.glVertexAttribPointer(t,2,GLES20.GL_FLOAT,false,0,buf(tex)); GLES20.glEnableVertexAttribArray(t)
+        GLES20.glVertexAttribPointer(p,2,GLES20.GL_FLOAT,false,0,quadBuffer); GLES20.glEnableVertexAttribArray(p)
+        GLES20.glVertexAttribPointer(t,2,GLES20.GL_FLOAT,false,0,textureBuffer); GLES20.glEnableVertexAttribArray(t)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0); GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES,textureId)
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4)
     }
