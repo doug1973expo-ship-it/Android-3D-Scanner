@@ -1,8 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
     <application android:theme="@style/Theme.PocketScanner" android:label="Pocket 3D Scanner" android:allowBackup="true">
-        <meta-data android:name="com.google.ar.core" android:value="required" />
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
         <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.files"
             android:exported="false" android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
