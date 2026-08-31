@@ -12,7 +12,7 @@
         <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="Move slowly around the object" android:textColor="#FFFFFF" android:textSize="18sp" />
         <TextView android:id="@+id/count" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="0 surface cells" android:textColor="#B8C4C8" android:textSize="14sp" />
+            android:text="0 surface cells • green = scanned" android:textColor="#B8C4C8" android:textSize="14sp" />
     </LinearLayout>
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="bottom"
         android:orientation="horizontal" android:gravity="center" android:padding="16dp" android:background="#CC101416">
