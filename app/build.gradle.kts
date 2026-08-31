@@ -10,6 +10,21 @@ android {
         versionName = "1.0"
     }
     buildFeatures { viewBinding = true }
+    signingConfigs {
+        create("scanner") {
+            storeFile = rootProject.file("scanner-release.p12")
+            storePassword = "Pocket3DScanner"
+            keyAlias = "scanner"
+            keyPassword = "Pocket3DScanner"
+            storeType = "PKCS12"
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("scanner")
+            isMinifyEnabled = false
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
