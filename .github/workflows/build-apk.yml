@@ -23,4 +23,4 @@ jobs:
         run: |
           gh release delete latest --yes --cleanup-tag 2>/dev/null || true
           cp app/build/outputs/apk/release/app-release.apk Pocket-3D-Scanner.apk
-          gh release create latest Pocket-3D-Scanner.apk --title "Latest Pocket 3D Scanner APK" --notes "Date-compatible Android build. Download Pocket-3D-Scanner.apk below."
+          gh release create latest Pocket-3D-Scanner.apk --title "Latest Pocket 3D Scanner APK" --notes "Android 13 camera-preview build. Download Pocket-3D-Scanner.apk below."
