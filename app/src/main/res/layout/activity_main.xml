@@ -1,6 +1,12 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent" android:background="#101416">
     <android.opengl.GLSurfaceView android:id="@+id/surface" android:layout_width="match_parent" android:layout_height="match_parent" />
+    <View android:layout_width="280dp" android:layout_height="280dp" android:layout_gravity="center"
+        android:background="@drawable/scan_frame" />
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal|bottom" android:layout_marginBottom="92dp"
+        android:padding="10dp" android:background="#AA101416" android:textColor="#FFFFFF"
+        android:text="Keep the object inside the frame" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="top"
         android:orientation="vertical" android:padding="18dp" android:background="#AA101416">
         <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
