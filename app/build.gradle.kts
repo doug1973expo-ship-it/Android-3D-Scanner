@@ -6,27 +6,10 @@ android {
         applicationId = "uk.co.pocket3d.scanner.edge20"
         minSdk = 26
         targetSdk = 33
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
     buildFeatures { viewBinding = true }
-    signingConfigs {
-        create("scanner") {
-            storeFile = rootProject.file("scanner-release.p12")
-            storePassword = "Pocket3DScanner"
-            keyAlias = "scanner"
-            keyPassword = "Pocket3DScanner"
-            storeType = "PKCS12"
-            enableV1Signing = true
-            enableV2Signing = true
-        }
-    }
-    buildTypes {
-        getByName("release") {
-            signingConfig = signingConfigs.getByName("scanner")
-            isMinifyEnabled = false
-        }
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
