@@ -4,7 +4,7 @@
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="top"
         android:orientation="vertical" android:padding="18dp" android:background="#AA101416">
         <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Move slowly around the object" android:textColor="white" android:textSize="18sp" />
+            android:text="Move slowly around the object" android:textColor="#FFFFFF" android:textSize="18sp" />
         <TextView android:id="@+id/count" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="0 surface cells" android:textColor="#B8C4C8" android:textSize="14sp" />
     </LinearLayout>
