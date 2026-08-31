@@ -3,9 +3,9 @@ android {
     namespace = "uk.co.pocket3d.scanner"
     compileSdk = 35
     defaultConfig {
-        applicationId = "uk.co.pocket3d.scanner"
+        applicationId = "uk.co.pocket3d.scanner.motorola"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0"
     }
@@ -17,6 +17,8 @@ android {
             keyAlias = "scanner"
             keyPassword = "Pocket3DScanner"
             storeType = "PKCS12"
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
     buildTypes {
