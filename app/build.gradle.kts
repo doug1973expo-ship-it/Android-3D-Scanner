@@ -3,7 +3,7 @@ android {
     namespace = "uk.co.pocket3d.scanner"
     compileSdk = 35
     defaultConfig {
-        applicationId = "uk.co.pocket3d.scanner.motorola"
+        applicationId = "uk.co.pocket3d.scanner.edge20"
         minSdk = 26
         targetSdk = 33
         versionCode = 2
