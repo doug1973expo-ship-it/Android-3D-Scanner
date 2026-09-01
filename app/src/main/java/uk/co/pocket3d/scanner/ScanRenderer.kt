@@ -2,6 +2,7 @@ package uk.co.pocket3d.scanner
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import com.google.ar.core.*
+import com.google.ar.core.exceptions.NotYetAvailableException
 import java.nio.ByteOrder
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
