@@ -9,8 +9,8 @@ import java.nio.ByteOrder
 class GreenScanOverlay {
     private var program=0
     fun create(){
-        val vertex="""uniform mat4 mvp;attribute vec3 position;void main(){gl_Position=mvp*vec4(position,1.0);gl_PointSize=11.0;}"""
-        val fragment="""precision mediump float;void main(){vec2 p=gl_PointCoord-vec2(0.5);if(dot(p,p)>0.25)discard;gl_FragColor=vec4(0.12,1.0,0.35,0.42);}"""
+        val vertex="""uniform mat4 mvp;attribute vec3 position;void main(){gl_Position=mvp*vec4(position,1.0);gl_PointSize=clamp(15.0/gl_Position.w,10.0,28.0);}"""
+        val fragment="""precision mediump float;void main(){vec2 p=gl_PointCoord-vec2(0.5);if(dot(p,p)>0.25)discard;gl_FragColor=vec4(0.08,0.95,0.28,0.30);}"""
         fun shader(type:Int,source:String)=GLES20.glCreateShader(type).also{GLES20.glShaderSource(it,source);GLES20.glCompileShader(it)}
         program=GLES20.glCreateProgram().also{GLES20.glAttachShader(it,shader(GLES20.GL_VERTEX_SHADER,vertex));GLES20.glAttachShader(it,shader(GLES20.GL_FRAGMENT_SHADER,fragment));GLES20.glLinkProgram(it)}
     }
