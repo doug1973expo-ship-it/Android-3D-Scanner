@@ -1,0 +1,121 @@
+name: Build RoomScope APK
+
+on:
+  push:
+    branches:
+      - roomscope-build
+    paths:
+      - 'roomscope_ci/**'
+      - '.github/workflows/build-roomscope-apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build-roomscope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+        with:
+          ref: roomscope-build
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Reconstruct RoomScope source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/roomscope-src
+          cat roomscope_ci/source.part* | base64 --decode > /tmp/roomscope-src.tar.gz
+          tar -xzf /tmp/roomscope-src.tar.gz -C /tmp/roomscope-src
+          flutter create --platforms=android --org app --project-name roomscope --empty --no-pub roomscope
+          cp -a /tmp/roomscope-src/. roomscope/
+
+      - name: Configure Android runner
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd roomscope
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle = Path('android/app/build.gradle.kts')
+          text = gradle.read_text()
+          text = text.replace('minSdk = flutter.minSdkVersion', 'minSdk = 26')
+          needle = 'defaultConfig {'
+          if 'manifestPlaceholders["appAuthRedirectScheme"]' not in text:
+              text = text.replace(needle, needle + '\n        manifestPlaceholders["appAuthRedirectScheme"] = "app.roomscope"', 1)
+          gradle.write_text(text)
+
+          activity = Path('android/app/src/main/kotlin/app/roomscope/MainActivity.kt')
+          activity.parent.mkdir(parents=True, exist_ok=True)
+          activity.write_text('''package app.roomscope\n\nimport io.flutter.embedding.android.FlutterFragmentActivity\n\nclass MainActivity : FlutterFragmentActivity()\n''')
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          m = manifest.read_text()
+          m = m.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+          m = m.replace('android:label="roomscope"', 'android:label="RoomScope"')
+          manifest.write_text(m)
+          PY
+
+      - name: Download and verify MiDaS model
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd roomscope
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import urllib.request
+
+          lock = json.loads(pathlib.Path('assets/models/model.lock.json').read_text())
+          out = pathlib.Path('assets/models/midas_small.tflite')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          urllib.request.urlretrieve(lock['url'], out)
+          digest = hashlib.sha256(out.read_bytes()).hexdigest()
+          if digest.lower() != lock['sha256'].lower():
+              raise SystemExit(f'MiDaS SHA-256 mismatch: {digest}')
+          if out.stat().st_size != int(lock['size']):
+              raise SystemExit(f'MiDaS size mismatch: {out.stat().st_size}')
+          print(f'Verified {out} ({out.stat().st_size} bytes)')
+          PY
+
+      - name: Resolve Flutter packages
+        shell: bash
+        run: |
+          cd roomscope
+          flutter pub get
+
+      - name: Build ARM64 debug APK
+        shell: bash
+        run: |
+          cd roomscope
+          flutter build apk --debug --target-platform android-arm64
+
+      - name: Stage APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p output
+          cp roomscope/build/app/outputs/flutter-apk/app-debug.apk output/RoomScope-debug-arm64.apk
+          ls -lh output/RoomScope-debug-arm64.apk
+
+      - name: Upload RoomScope APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RoomScope-debug-arm64
+          path: output/RoomScope-debug-arm64.apk
+          if-no-files-found: error
+          retention-days: 14
