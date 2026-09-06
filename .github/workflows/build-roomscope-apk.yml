@@ -119,3 +119,5 @@ jobs:
           path: output/RoomScope-debug-arm64.apk
           if-no-files-found: error
           retention-days: 14
+
+# rebuild after source integrity repair
