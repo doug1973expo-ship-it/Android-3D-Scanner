@@ -37,8 +37,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p /tmp/roomscope-src
-          cat roomscope_ci/source.part* | base64 --decode > /tmp/roomscope-src.tar.gz
-          tar -xzf /tmp/roomscope-src.tar.gz -C /tmp/roomscope-src
+          tar -xzf roomscope_ci/source.tar.gz -C /tmp/roomscope-src
           flutter create --platforms=android --org app --project-name roomscope --empty --no-pub roomscope
           cp -a /tmp/roomscope-src/. roomscope/
 
@@ -119,5 +118,3 @@ jobs:
           path: output/RoomScope-debug-arm64.apk
           if-no-files-found: error
           retention-days: 14
-
-# rebuild after source integrity repair
