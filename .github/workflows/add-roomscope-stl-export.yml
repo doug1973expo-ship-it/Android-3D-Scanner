@@ -1,0 +1,430 @@
+name: Add RoomScope STL export
+
+on:
+  push:
+    branches: [roomscope-build]
+    paths:
+      - '.github/workflows/add-roomscope-stl-export.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: roomscope-build
+
+      - name: Add STL mesher and export UI
+        shell: python
+        run: |
+          from pathlib import Path
+
+          stl = r'''import 'dart:convert';
+          import 'dart:typed_data';
+
+          typedef _Cell = (int, int, int);
+
+          class _Face {
+            const _Face(
+              this.dx,
+              this.dy,
+              this.dz,
+              this.nx,
+              this.ny,
+              this.nz,
+              this.a,
+              this.b,
+              this.c,
+              this.d,
+            );
+
+            final int dx, dy, dz;
+            final double nx, ny, nz;
+            final int a, b, c, d;
+          }
+
+          const _faces = <_Face>[
+            _Face(1, 0, 0, 1, 0, 0, 1, 3, 7, 5),
+            _Face(-1, 0, 0, -1, 0, 0, 0, 4, 6, 2),
+            _Face(0, 1, 0, 0, 1, 0, 2, 6, 7, 3),
+            _Face(0, -1, 0, 0, -1, 0, 0, 1, 5, 4),
+            _Face(0, 0, 1, 0, 0, 1, 4, 5, 7, 6),
+            _Face(0, 0, -1, 0, 0, -1, 0, 2, 3, 1),
+          ];
+
+          /// Converts RoomScope XYZ points (metres, Y-up) into a closed binary STL.
+          /// The STL is Z-up, millimetres, and uses occupied voxels so slicers receive
+          /// triangles rather than an unprintable point cloud.
+          Uint8List buildVoxelStl(Float32List xyz) {
+            if (xyz.isEmpty || xyz.length % 3 != 0) {
+              throw const FormatException('No valid RoomScope points to export.');
+            }
+
+            var voxelSize = 0.04;
+            Set<_Cell> occupied = <_Cell>{};
+            for (var attempt = 0; attempt < 8; attempt++) {
+              occupied = _voxelize(xyz, voxelSize);
+              if (occupied.length <= 60000) break;
+              voxelSize *= 1.25;
+            }
+            if (occupied.isEmpty) {
+              throw const FormatException('The scan contains no finite 3D points.');
+            }
+
+            // Remove one-off speckles while preserving connected surfaces/furniture.
+            if (occupied.length > 16) {
+              final filtered = occupied
+                  .where((cell) => _hasNeighbour(cell, occupied))
+                  .toSet();
+              if (filtered.length >= 8) occupied = filtered;
+            }
+
+            var minX = occupied.first.$1;
+            var minY = occupied.first.$2;
+            var minZ = occupied.first.$3;
+            var maxZ = occupied.first.$3;
+            for (final cell in occupied) {
+              if (cell.$1 < minX) minX = cell.$1;
+              if (cell.$2 < minY) minY = cell.$2;
+              if (cell.$3 < minZ) minZ = cell.$3;
+              if (cell.$3 > maxZ) maxZ = cell.$3;
+            }
+
+            var triangleCount = 0;
+            for (final cell in occupied) {
+              for (final face in _faces) {
+                if (!occupied.contains((
+                  cell.$1 + face.dx,
+                  cell.$2 + face.dy,
+                  cell.$3 + face.dz,
+                ))) {
+                  triangleCount += 2;
+                }
+              }
+            }
+            if (triangleCount == 0) {
+              throw const FormatException('The scan did not produce an STL surface.');
+            }
+
+            final bytes = Uint8List(84 + triangleCount * 50);
+            final header = utf8.encode(
+              'RoomScope closed voxel mesh; Z-up; units millimetres; binary STL',
+            );
+            final headerLength = header.length < 80 ? header.length : 80;
+            bytes.setRange(0, headerLength, header);
+            final data = ByteData.view(bytes.buffer);
+            data.setUint32(80, triangleCount, Endian.little);
+
+            final mm = voxelSize * 1000.0;
+            final depthExtent = (maxZ - minZ + 1) * mm;
+            var offset = 84;
+            for (final cell in occupied) {
+              final x0 = (cell.$1 - minX) * mm;
+              final y0 = (cell.$2 - minY) * mm;
+              final z0 = (cell.$3 - minZ) * mm;
+              final x1 = x0 + mm;
+              final y1 = y0 + mm;
+              final z1 = z0 + mm;
+              for (final face in _faces) {
+                if (occupied.contains((
+                  cell.$1 + face.dx,
+                  cell.$2 + face.dy,
+                  cell.$3 + face.dz,
+                ))) {
+                  continue;
+                }
+                offset = _writeTriangle(
+                  data,
+                  offset,
+                  face,
+                  face.a,
+                  face.b,
+                  face.c,
+                  x0,
+                  y0,
+                  z0,
+                  x1,
+                  y1,
+                  z1,
+                  depthExtent,
+                );
+                offset = _writeTriangle(
+                  data,
+                  offset,
+                  face,
+                  face.a,
+                  face.c,
+                  face.d,
+                  x0,
+                  y0,
+                  z0,
+                  x1,
+                  y1,
+                  z1,
+                  depthExtent,
+                );
+              }
+            }
+            return bytes;
+          }
+
+          Set<_Cell> _voxelize(Float32List xyz, double size) {
+            final cells = <_Cell>{};
+            for (var i = 0; i + 2 < xyz.length; i += 3) {
+              final x = xyz[i].toDouble();
+              final y = xyz[i + 1].toDouble();
+              final z = xyz[i + 2].toDouble();
+              if (!x.isFinite || !y.isFinite || !z.isFinite) continue;
+              cells.add(((x / size).floor(), (y / size).floor(), (z / size).floor()));
+            }
+            return cells;
+          }
+
+          bool _hasNeighbour(_Cell cell, Set<_Cell> cells) {
+            for (var dx = -1; dx <= 1; dx++) {
+              for (var dy = -1; dy <= 1; dy++) {
+                for (var dz = -1; dz <= 1; dz++) {
+                  if (dx == 0 && dy == 0 && dz == 0) continue;
+                  if (cells.contains((cell.$1 + dx, cell.$2 + dy, cell.$3 + dz))) {
+                    return true;
+                  }
+                }
+              }
+            }
+            return false;
+          }
+
+          int _writeTriangle(
+            ByteData data,
+            int offset,
+            _Face face,
+            int a,
+            int b,
+            int c,
+            double x0,
+            double y0,
+            double z0,
+            double x1,
+            double y1,
+            double z1,
+            double depthExtent,
+          ) {
+            void writeFloat(double value) {
+              data.setFloat32(offset, value, Endian.little);
+              offset += 4;
+            }
+
+            // World (X,Y,Z with Y-up) -> STL (X,-Z,Y with Z-up).
+            writeFloat(face.nx);
+            writeFloat(-face.nz);
+            writeFloat(face.ny);
+
+            for (final corner in [a, b, c]) {
+              final wx = (corner & 1) == 0 ? x0 : x1;
+              final wy = (corner & 2) == 0 ? y0 : y1;
+              final wz = (corner & 4) == 0 ? z0 : z1;
+              writeFloat(wx);
+              writeFloat(depthExtent - wz);
+              writeFloat(wy);
+            }
+            data.setUint16(offset, 0, Endian.little);
+            return offset + 2;
+          }
+          '''
+          # Remove workflow indentation from the embedded Dart source.
+          stl = '\n'.join(line[10:] if line.startswith('          ') else line for line in stl.splitlines()) + '\n'
+          Path('roomscope_src/lib/mapping/stl.dart').write_text(stl)
+
+          pubspec = Path('roomscope_src/pubspec.yaml')
+          pub = pubspec.read_text()
+          pub = pub.replace('version: 0.2.1+3', 'version: 0.3.0+4')
+          if '  share_plus:' not in pub:
+            pub = pub.replace(
+              '  uuid: ^4.5.1\n',
+              '  uuid: ^4.5.1\n  share_plus: ^11.1.0\n  cross_file: ^0.3.4+2\n',
+            )
+          pubspec.write_text(pub)
+
+          home = Path('roomscope_src/lib/ui/home.dart')
+          text = home.read_text()
+          old_imports = """import 'dart:async';
+          import 'dart:math' as math;
+
+          import 'package:flutter/material.dart';
+          import 'package:permission_handler/permission_handler.dart';
+          import 'package:room_capture/room_capture.dart';
+
+          import '../capture/session_controller.dart';
+          import '../mapping/geometry.dart';
+          """
+          new_imports = """import 'dart:async';
+          import 'dart:io';
+          import 'dart:math' as math;
+          import 'dart:typed_data';
+
+          import 'package:cross_file/cross_file.dart';
+          import 'package:flutter/foundation.dart';
+          import 'package:flutter/material.dart';
+          import 'package:permission_handler/permission_handler.dart';
+          import 'package:room_capture/room_capture.dart';
+          import 'package:share_plus/share_plus.dart';
+
+          import '../capture/session_controller.dart';
+          import '../mapping/geometry.dart';
+          import '../mapping/stl.dart';
+          """
+          old_imports = '\n'.join(line[10:] if line.startswith('          ') else line for line in old_imports.splitlines()) + '\n'
+          new_imports = '\n'.join(line[10:] if line.startswith('          ') else line for line in new_imports.splitlines()) + '\n'
+          if old_imports not in text:
+            raise SystemExit('RoomScope import block changed; refusing unsafe patch')
+          text = text.replace(old_imports, new_imports, 1)
+
+          start = text.index('class _SavedRoomScreenState extends State<SavedRoomScreen> {')
+          end = text.index('\nclass _Pill extends StatelessWidget', start)
+          state = r'''class _SavedRoomScreenState extends State<SavedRoomScreen> {
+            late final Future<List<Point3>> _points = widget.capture.loadPoints();
+            bool _exporting = false;
+
+            Future<void> _exportStl() async {
+              if (_exporting) return;
+              setState(() => _exporting = true);
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                final points = await _points;
+                if (points.isEmpty) {
+                  throw const FormatException('This room has no points to export.');
+                }
+                final xyz = Float32List(points.length * 3);
+                var offset = 0;
+                for (final point in points) {
+                  xyz[offset++] = point.x;
+                  xyz[offset++] = point.y;
+                  xyz[offset++] = point.z;
+                }
+                final bytes = await compute(buildVoxelStl, xyz);
+                final shortId = widget.capture.id.length > 8
+                    ? widget.capture.id.substring(0, 8)
+                    : widget.capture.id;
+                final file = File(
+                  '${widget.capture.directory.path}/RoomScope-$shortId.stl',
+                );
+                await file.writeAsBytes(bytes, flush: true);
+                if (!mounted) return;
+                await SharePlus.instance.share(
+                  ShareParams(
+                    title: 'Export RoomScope STL',
+                    text: 'RoomScope 3D mesh · millimetres · Z-up',
+                    files: [XFile(file.path, mimeType: 'model/stl')],
+                  ),
+                );
+              } catch (_) {
+                if (mounted) {
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'STL export could not be created from this scan.',
+                      ),
+                    ),
+                  );
+                }
+              } finally {
+                if (mounted) setState(() => _exporting = false);
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) => Scaffold(
+                  appBar: AppBar(title: const Text('Saved room')),
+                  body: SafeArea(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            '${widget.capture.count} points · '
+                            '${widget.capture.created.day}/${widget.capture.created.month} · '
+                            '${widget.capture.manifest['durationSeconds']}s',
+                          ),
+                        ),
+                        Expanded(
+                          child: FutureBuilder<List<Point3>>(
+                            future: _points,
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(24),
+                                    child: Text(
+                                      'This room could not be opened. Its saved files '
+                                      'are still on this device.',
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                );
+                              }
+                              if (!snapshot.hasData) {
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              }
+                              return CloudViewer(points: snapshot.data!);
+                            },
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text(
+                                'Drag to orbit · pinch to zoom',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white60),
+                              ),
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed: _exporting ? null : _exportStl,
+                                icon: _exporting
+                                    ? const SizedBox.square(
+                                        dimension: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.view_in_ar_outlined),
+                                label: Text(
+                                  _exporting ? 'Building STL…' : 'Export STL',
+                                ),
+                              ),
+                              const SizedBox(height: 7),
+                              const Text(
+                                'Creates a closed voxel mesh in millimetres for slicer and 3D-printing apps.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+          }
+          '''
+          state = '\n'.join(line[10:] if line.startswith('          ') else line for line in state.splitlines())
+          text = text[:start] + state + text[end:]
+          home.write_text(text)
+
+      - name: Commit STL export
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add roomscope_src/pubspec.yaml roomscope_src/lib/ui/home.dart roomscope_src/lib/mapping/stl.dart
+          git commit -m 'Add STL export for RoomScope scans'
+          git push origin HEAD:roomscope-build
