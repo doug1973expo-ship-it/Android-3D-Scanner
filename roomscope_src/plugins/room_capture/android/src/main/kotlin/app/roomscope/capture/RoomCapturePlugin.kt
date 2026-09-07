@@ -75,10 +75,14 @@ class RoomCapturePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         synchronized(lock) {
             if (session == null) {
                 session = Session(host).also { created ->
-                    created.configure(Config(created).apply {
+                    val config = Config(created).apply {
                         focusMode = Config.FocusMode.AUTO
                         updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                    })
+                    }
+                    if (created.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                        config.depthMode = Config.DepthMode.AUTOMATIC
+                    }
+                    created.configure(config)
                 }
             }
             if (!running) { session!!.resume(); running = true }
@@ -273,13 +277,53 @@ class RoomCapturePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                             i += 4
                         }
                     }
+                    var nativeDepth = false
+                    if (camera.trackingState == TrackingState.TRACKING &&
+                        current.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                        try {
+                            frame.acquireDepthImage16Bits().use { depthImage ->
+                                val plane = depthImage.planes[0]
+                                val buffer = plane.buffer.order(ByteOrder.LITTLE_ENDIAN)
+                                val dfx = focal[0] * depthImage.width.toFloat() / dimensions[0]
+                                val dfy = focal[1] * depthImage.height.toFloat() / dimensions[1]
+                                val dcx = center[0] * depthImage.width.toFloat() / dimensions[0]
+                                val dcy = center[1] * depthImage.height.toFloat() / dimensions[1]
+                                val step = maxOf(2, minOf(depthImage.width, depthImage.height) / 60)
+                                depthLoop@ for (v in step/2 until depthImage.height step step) {
+                                    for (u in step/2 until depthImage.width step step) {
+                                        if (points.size >= 18000) break@depthLoop
+                                        val offset = v*plane.rowStride + u*plane.pixelStride
+                                        if (offset < 0 || offset+1 >= buffer.limit()) continue
+                                        val mm = buffer.getShort(offset).toInt() and 0xffff
+                                        if (mm !in 250..8000) continue
+                                        val z = mm/1000f
+                                        val local = floatArrayOf(
+                                            (u.toFloat()-dcx)*z/dfx,
+                                            -(v.toFloat()-dcy)*z/dfy,
+                                            -z
+                                        )
+                                        val world = camera.pose.transformPoint(local)
+                                        points.addAll(world.map { it.toDouble() })
+                                        nativeDepth = true
+                                    }
+                                }
+                            }
+                        } catch (_: NotYetAvailableException) {
+                            // ARCore depth generally needs several tracked frames first.
+                        } catch (_: IllegalStateException) {
+                            // Keep feature-point and MiDaS fallback alive if depth drops out.
+                        }
+                    }
                     var rgb: ByteArray? = null
-                    try { frame.acquireCameraImage().use { rgb = rgb256(it) } }
-                    catch (_: NotYetAvailableException) { }
+                    if (!nativeDepth) {
+                        try { frame.acquireCameraImage().use { rgb = rgb256(it) } }
+                        catch (_: NotYetAvailableException) { }
+                    }
                     emit(mapOf("timestamp" to frame.timestamp/1e9,
                         "tracking" to (camera.trackingState == TrackingState.TRACKING),
                         "pose" to pose.map { it.toDouble() }, "intrinsics" to k,
-                        "anchors" to anchors, "points" to points, "rgb" to rgb))
+                        "anchors" to anchors, "points" to points, "rgb" to rgb,
+                        "nativeDepth" to nativeDepth))
                     hadError = false
                 } catch (error: Exception) {
                     if (!hadError) emit(mapOf("error" to "Camera tracking was interrupted. Retry camera access."))
