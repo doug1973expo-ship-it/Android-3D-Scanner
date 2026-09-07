@@ -1,12 +1,18 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:cross_file/cross_file.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:room_capture/room_capture.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../capture/session_controller.dart';
 import '../mapping/geometry.dart';
+import '../mapping/stl.dart';
 
 const mint = Color(0xff67e8ba);
 
@@ -495,57 +501,136 @@ class SavedRoomScreen extends StatefulWidget {
 
 class _SavedRoomScreenState extends State<SavedRoomScreen> {
   late final Future<List<Point3>> _points = widget.capture.loadPoints();
+  bool _exporting = false;
+
+  Future<void> _exportStl() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final points = await _points;
+      if (points.isEmpty) {
+        throw const FormatException('This room has no points to export.');
+      }
+      final xyz = Float32List(points.length * 3);
+      var offset = 0;
+      for (final point in points) {
+        xyz[offset++] = point.x;
+        xyz[offset++] = point.y;
+        xyz[offset++] = point.z;
+      }
+      final bytes = await compute(buildVoxelStl, xyz);
+      final shortId = widget.capture.id.length > 8
+? widget.capture.id.substring(0, 8)
+: widget.capture.id;
+      final file = File(
+        '${widget.capture.directory.path}/RoomScope-$shortId.stl',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(
+title: 'Export RoomScope STL',
+text: 'RoomScope 3D mesh · millimetres · Z-up',
+files: [XFile(file.path, mimeType: 'model/stl')],
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        messenger.showSnackBar(
+const SnackBar(
+  content: Text(
+    'STL export could not be created from this scan.',
+  ),
+),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Saved room')),
         body: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
+child: Column(
+  children: [
+    Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(
+        '${widget.capture.count} points · '
+        '${widget.capture.created.day}/${widget.capture.created.month} · '
+        '${widget.capture.manifest['durationSeconds']}s',
+      ),
+    ),
+    Expanded(
+      child: FutureBuilder<List<Point3>>(
+        future: _points,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
                 child: Text(
-                  '${widget.capture.count} points · '
-                  '${widget.capture.created.day}/${widget.capture.created.month} · '
-                  '${widget.capture.manifest['durationSeconds']}s',
+                  'This room could not be opened. Its saved files '
+                  'are still on this device.',
+                  textAlign: TextAlign.center,
                 ),
               ),
-              Expanded(
-                child: FutureBuilder<List<Point3>>(
-                  future: _points,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Text(
-                            'This room could not be opened. Its saved files '
-                            'are still on this device.',
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      );
-                    }
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    return CloudViewer(points: snapshot.data!);
-                  },
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text(
-                  'Drag to orbit · pinch to zoom',
-                  style: TextStyle(color: Colors.white60),
-                ),
-              ),
-            ],
+            );
+          }
+          if (!snapshot.hasData) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+          return CloudViewer(points: snapshot.data!);
+        },
+      ),
+    ),
+    Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Drag to orbit · pinch to zoom',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white60),
           ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _exporting ? null : _exportStl,
+            icon: _exporting
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(Icons.view_in_ar_outlined),
+            label: Text(
+              _exporting ? 'Building STL…' : 'Export STL',
+            ),
+          ),
+          const SizedBox(height: 7),
+          const Text(
+            'Creates a closed voxel mesh in millimetres for slicer and 3D-printing apps.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white54,
+            ),
+          ),
+        ],
+      ),
+    ),
+  ],
+),
         ),
       );
 }
-
 class _Pill extends StatelessWidget {
   const _Pill(this.text, {this.color = Colors.white});
   final String text;
