@@ -1,0 +1,54 @@
+name: Unpack RoomScope Source
+
+on:
+  push:
+    branches:
+      - roomscope-build
+    paths:
+      - '.github/workflows/unpack-roomscope-source.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout RoomScope branch
+        uses: actions/checkout@v4
+        with:
+          ref: roomscope-build
+          fetch-depth: 0
+
+      - name: Recover archived RoomScope source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/roomscope-src roomscope_src
+          mkdir -p /tmp/roomscope-src roomscope_src
+          cat roomscope_ci/source.part* | base64 --decode > /tmp/roomscope-src.tar.gz
+          set +e
+          gzip -dc /tmp/roomscope-src.tar.gz > /tmp/roomscope-src.tar
+          gzip_status=$?
+          set -e
+          echo "gzip status: $gzip_status"
+          tar -tf /tmp/roomscope-src.tar > /tmp/roomscope-files.txt
+          grep -qx './pubspec.yaml' /tmp/roomscope-files.txt
+          grep -qx './lib/main.dart' /tmp/roomscope-files.txt
+          tar -xf /tmp/roomscope-src.tar -C /tmp/roomscope-src
+          cp -a /tmp/roomscope-src/. roomscope_src/
+          find roomscope_src -type f -print | sort
+
+      - name: Commit unpacked source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add roomscope_src
+          if git diff --cached --quiet; then
+            echo "RoomScope source already unpacked"
+          else
+            git commit -m "Unpack RoomScope source for direct development"
+            git push origin HEAD:roomscope-build
+          fi
