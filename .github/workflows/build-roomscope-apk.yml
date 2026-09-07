@@ -37,7 +37,25 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p /tmp/roomscope-src
-          tar -xzf roomscope_ci/source.tar.gz -C /tmp/roomscope-src
+
+          # The original split payload contains the fuller RoomScope source.
+          # Its gzip footer has a bad CRC, but gzip still emits the complete tar
+          # payload before returning status 1. Recover that payload and then let
+          # tar independently validate/extract it.
+          cat roomscope_ci/source.part* | base64 --decode > /tmp/roomscope-src.tar.gz
+          set +e
+          gzip -dc /tmp/roomscope-src.tar.gz > /tmp/roomscope-src.tar
+          gzip_status=$?
+          set -e
+          if [ "$gzip_status" -ne 0 ]; then
+            echo "gzip reported status $gzip_status; checking recovered tar payload"
+          fi
+
+          tar -tf /tmp/roomscope-src.tar > /tmp/roomscope-files.txt
+          grep -qx './pubspec.yaml' /tmp/roomscope-files.txt
+          grep -qx './lib/main.dart' /tmp/roomscope-files.txt
+          tar -xf /tmp/roomscope-src.tar -C /tmp/roomscope-src
+
           flutter create --platforms=android --org app --project-name roomscope --empty --no-pub roomscope
           cp -a /tmp/roomscope-src/. roomscope/
 
@@ -63,7 +81,8 @@ jobs:
 
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           m = manifest.read_text()
-          m = m.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+          if 'android.permission.INTERNET' not in m:
+              m = m.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
           m = m.replace('android:label="roomscope"', 'android:label="RoomScope"')
           manifest.write_text(m)
           PY
