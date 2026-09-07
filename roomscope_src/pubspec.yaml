@@ -1,0 +1,27 @@
+name: roomscope
+description: Local-first room video capture with tracked 3D mapping and private AWS sync.
+publish_to: none
+version: 0.2.0+2
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  room_capture:
+    path: plugins/room_capture
+  path_provider: ^2.1.5
+  permission_handler: ^12.0.1
+  tflite_flutter: ^0.12.1
+  flutter_appauth: ^11.0.0
+  flutter_secure_storage: ^10.0.0
+  http: ^1.5.0
+  crypto: ^3.0.6
+  uuid: ^4.5.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/
