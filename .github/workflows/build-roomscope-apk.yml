@@ -98,6 +98,35 @@ jobs:
           cd roomscope
           flutter pub get
 
+      - name: Align TensorFlow Lite JVM target
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          pub_cache = Path(os.environ['PUB_CACHE'])
+          gradle = pub_cache / 'hosted' / 'pub.dev' / 'tflite_flutter-0.12.1' / 'android' / 'build.gradle'
+          if not gradle.exists():
+              raise SystemExit(f'Expected tflite_flutter Gradle file was not found: {gradle}')
+          text = gradle.read_text()
+          old = '''    compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_11
+                  targetCompatibility JavaVersion.VERSION_11
+              }'''
+          # Preserve compatibility with the package while matching Flutter's
+          # current Kotlin JVM 17 target, which Gradle validates strictly.
+          text = text.replace('sourceCompatibility JavaVersion.VERSION_11',
+                              'sourceCompatibility JavaVersion.VERSION_17')
+          text = text.replace('targetCompatibility JavaVersion.VERSION_11',
+                              'targetCompatibility JavaVersion.VERSION_17')
+          if 'JavaVersion.VERSION_11' in text:
+              raise SystemExit('Could not fully align tflite_flutter Java target')
+          gradle.write_text(text)
+          print('Aligned tflite_flutter Java and Kotlin compilation to JVM 17')
+          PY
+
       - name: Build ARM64 debug APK
         shell: bash
         run: |
