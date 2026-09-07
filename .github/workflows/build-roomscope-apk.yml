@@ -5,7 +5,7 @@ on:
     branches:
       - roomscope-build
     paths:
-      - 'roomscope_ci/**'
+      - 'roomscope_src/**'
       - '.github/workflows/build-roomscope-apk.yml'
   workflow_dispatch:
 
@@ -21,7 +21,7 @@ jobs:
           ref: roomscope-build
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -32,32 +32,14 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Reconstruct RoomScope source
+      - name: Prepare RoomScope source
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p /tmp/roomscope-src
-
-          # The original split payload contains the fuller RoomScope source.
-          # Its gzip footer has a bad CRC, but gzip still emits the complete tar
-          # payload before returning status 1. Recover that payload and then let
-          # tar independently validate/extract it.
-          cat roomscope_ci/source.part* | base64 --decode > /tmp/roomscope-src.tar.gz
-          set +e
-          gzip -dc /tmp/roomscope-src.tar.gz > /tmp/roomscope-src.tar
-          gzip_status=$?
-          set -e
-          if [ "$gzip_status" -ne 0 ]; then
-            echo "gzip reported status $gzip_status; checking recovered tar payload"
-          fi
-
-          tar -tf /tmp/roomscope-src.tar > /tmp/roomscope-files.txt
-          grep -qx './pubspec.yaml' /tmp/roomscope-files.txt
-          grep -qx './lib/main.dart' /tmp/roomscope-files.txt
-          tar -xf /tmp/roomscope-src.tar -C /tmp/roomscope-src
-
+          test -f roomscope_src/pubspec.yaml
+          test -f roomscope_src/lib/main.dart
           flutter create --platforms=android --org app --project-name roomscope --empty --no-pub roomscope
-          cp -a /tmp/roomscope-src/. roomscope/
+          cp -a roomscope_src/. roomscope/
 
       - name: Configure Android runner
         shell: bash
